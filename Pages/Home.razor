@@ -1,0 +1,186 @@
+﻿@page "/"
+@inject IJSRuntime JSRuntime
+
+<MudPaper Elevation="4" Class="pa-4 d-flex align-items-center" Style="background-color: #b3b4bc;">
+    <div style="display: flex; width: 100%; justify-content: space-between; align-items: center;">
+        <MudText Align="Align.Start" Style="flex: 1; font-weight: bold; font-size: 1.2rem;">@currentTime</MudText>
+        <MudText Align="Align.Center" Style="color:#00008f; flex: 1; font-weight: bold; font-size: 1.2rem;">@location</MudText>
+        <MudText Align="Align.End" Style="flex: 1; font-weight: bold; font-size: 1.2rem;">@currentDate</MudText>
+    </div>
+</MudPaper>
+<MudPaper Elevation="4" Class="pa-4 d-flex align-items-center">
+    <div style="display: flex; width: 100%; justify-content: space-between; align-items: center;">
+        <MudText Align="Align.Center" Style="flex: 1; font-weight: bold; font-size: 2rem;"> ☾ NAMOZ VAQTLARI</MudText>
+    </div>
+</MudPaper>
+@foreach (var item in PriyerTimes)
+{
+    <MudAlert Style="background-color: #9ea9ff; color: rgb(0, 0, 0);" ContentAlignment="HorizontalAlignment.Center" Class="mb-2" Icon="@item.Icon">
+        <MudGrid>
+            <MudItem xs="6">
+                <MudText><strong>@item.Name</strong></MudText>
+            </MudItem>
+            <MudItem xs="6" Class="text-right">
+                <MudText>@item.Time</MudText>
+            </MudItem>
+        </MudGrid>
+    </MudAlert>
+}
+<MudPaper Elevation="4" Class="pa-4 d-flex align-items-center" Style="background-color: #b3b4bc; margin-top: 10px;">
+    <div style="display: flex; width: 100%; justify-content: space-between; align-items: center;">
+        <MudText Align="Align.Center" Style="flex: 1; font-size: 1.5rem; font-weight: bold;">
+            Keyingi namoz: <span style="color: #00108b;">@nextPrayerName</span> /    
+            Qolgan vaqt: <span style="color: red;">@timeUntilNextPrayer?.ToString(@"hh\:mm\:ss")</span>
+        </MudText>
+    </div>
+</MudPaper>
+
+@code {
+    private bool _loading = true;
+    private List<PriyerTime> PriyerTimes = new();
+    private TimeSpan? timeUntilNextPrayer;
+    private string? nextPrayerName;
+    private string Latitude { get; set; } = "";
+    private string Longitude { get; set; } = "";
+    private string location { get; set; } = "";
+    private string? currentTime;
+    private string? currentDate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        try
+        {
+            var userLocation = await JSRuntime.InvokeAsync<GeolocationCoordinates>("getLocation");
+            Latitude = userLocation.Latitude.ToString();
+            Longitude = userLocation.Longitude.ToString();
+
+            var apiResponse = await GetPrayerTimesAsync(Latitude, Longitude);
+
+            if (apiResponse != null)
+            {
+                PriyerTimes = new List<PriyerTime>
+                {
+                    new PriyerTime { Name = "Bomdod", Time = apiResponse.Fajr, Icon = Icons.Material.Filled.Brightness5 },
+                    new PriyerTime { Name = "Peshin", Time = apiResponse.Dhuhr, Icon = Icons.Material.Filled.WbSunny },
+                    new PriyerTime { Name = "Asr", Time = apiResponse.Asr, Icon = Icons.Material.Filled.Brightness5 },
+                    new PriyerTime { Name = "Shom", Time = apiResponse.Maghrib, Icon = Icons.Material.Filled.Brightness4 },
+                    new PriyerTime { Name = "Xufton", Time = apiResponse.Isha, Icon = Icons.Material.Filled.NightsStay }
+                };
+
+                UpdateNextPrayerTime();
+            }
+
+            var timer = new System.Threading.Timer(_ =>
+            {
+                currentTime = DateTime.Now.ToString("HH:mm:ss");
+                currentDate = DateTime.Now.ToString("dd.MM.yyyy");
+                UpdateNextPrayerTime();
+                StateHasChanged();
+            }, null, 0, 1000);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error fetching prayer times: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task<PrayerTimes?> GetPrayerTimesAsync(string latitude, string longitude)
+    {
+        using var client = new HttpClient();
+        string url = $"https://api.aladhan.com/v1/timings?latitude={latitude}&longitude={longitude}&method=2";
+
+        try
+        {
+            var response = await client.GetAsync(url);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var json = await response.Content.ReadAsStringAsync();
+                var result = JsonSerializer.Deserialize<ApiResponse>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                if (result?.Data?.Meta?.Timezone != null)
+                {
+                    location = result.Data.Meta.Timezone.Split('/').Last();
+                }
+
+                return result?.Data?.Timings;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error fetching API data: {ex.Message}");
+        }
+
+        return null;
+    }
+
+    private void UpdateNextPrayerTime()
+    {
+        var now = DateTime.Now;
+        var prayerTimes = new List<(string Name, DateTime Time)>
+        {
+            ("Bomdod", DateTime.Parse(PriyerTimes.FirstOrDefault(pt => pt.Name == "Bomdod")?.Time ?? "00:00")),
+            ("Peshin", DateTime.Parse(PriyerTimes.FirstOrDefault(pt => pt.Name == "Peshin")?.Time ?? "00:00")),
+            ("Asr", DateTime.Parse(PriyerTimes.FirstOrDefault(pt => pt.Name == "Asr")?.Time ?? "00:00")),
+            ("Shom", DateTime.Parse(PriyerTimes.FirstOrDefault(pt => pt.Name == "Shom")?.Time ?? "00:00")),
+            ("Xufton", DateTime.Parse(PriyerTimes.FirstOrDefault(pt => pt.Name == "Xufton")?.Time ?? "00:00"))
+        };
+
+        foreach (var prayer in prayerTimes)
+        {
+            if (prayer.Time > now)
+            {
+                nextPrayerName = prayer.Name;
+                timeUntilNextPrayer = prayer.Time - now;
+                return;
+            }
+        }
+
+        nextPrayerName = "Bomdod";
+        var tomorrowFajr = prayerTimes.First(pt => pt.Name == "Bomdod").Time.AddDays(1);
+        timeUntilNextPrayer = tomorrowFajr - now;
+    }
+
+    private class ApiResponse
+    {
+        public Data? Data { get; set; }
+    }
+
+    private class Data
+    {
+        public PrayerTimes? Timings { get; set; }
+        public Meta? Meta { get; set; }
+    }
+
+    private class Meta
+    {
+        public string Timezone { get; set; } = "";
+    }
+
+    private class PrayerTimes
+    {
+        public string Fajr { get; set; } = "";
+        public string Dhuhr { get; set; } = "";
+        public string Asr { get; set; } = "";
+        public string Maghrib { get; set; } = "";
+        public string Isha { get; set; } = "";
+    }
+
+    private class PriyerTime
+    {
+        public string Name { get; set; } = "";
+        public string Time { get; set; } = "";
+        public string Icon { get; set; } = "";
+    }
+
+    private class GeolocationCoordinates
+    {
+        public double Latitude { get; set; }
+        public double Longitude { get; set; }
+    }
+}
