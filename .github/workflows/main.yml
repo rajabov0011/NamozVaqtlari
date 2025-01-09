@@ -1,4 +1,4 @@
-name: Build and Deploy Blazor WebAssembly App
+name: Build and Deploy
 
 on:
   push:
@@ -6,26 +6,29 @@ on:
       - main
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v2
+    - name: Checkout repository
+      uses: actions/checkout@v3
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v2
+      uses: actions/setup-dotnet@v3
       with:
-        dotnet-version: 9.0
+        dotnet-version: 9.0.x
 
     - name: Restore dependencies
       run: dotnet restore
 
-    - name: Build
-      run: dotnet publish -c Release -o release
+    - name: Build application
+      run: dotnet build --configuration Release --no-restore
+
+    - name: Publish application
+      run: dotnet publish --configuration Release --output ./output
 
     - name: Deploy to GitHub Pages
       uses: peaceiris/actions-gh-pages@v3
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: ./release/wwwroot
+        publish_dir: ./output/wwwroot
