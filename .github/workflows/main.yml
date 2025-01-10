@@ -1,30 +1,40 @@
-name: Build and Deploy
+name: Build and Deploy Blazor WASM to GitHub Pages
 
 on:
   push:
     branches:
-      - main
+      - main  # Deploys when pushing to the main branch
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v3
-        with:
-          dotnet-version: '9.0.x'
+    - name: Checkout code
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: 0 # Ensure full history is fetched to avoid any issues with the gh-pages branch
 
-      - name: Restore dependencies
-        run: dotnet restore
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: '9.0.x' # Make sure this matches your .NET version
 
-      - name: Build project
-        run: dotnet build --no-restore --configuration Release
+    - name: Restore dependencies
+      run: dotnet restore ./MudBlazorMiniApp/MudBlazorMiniApp.csproj
 
-      - name: Publish project
-        run: dotnet publish --no-build --configuration Release --output ./output
+    - name: Build
+      run: dotnet build --configuration Release ./MudBlazorMiniApp/MudBlazorMiniApp.csproj
+
+    - name: Publish
+      run: dotnet publish --configuration Release --output ./publish ./MudBlazorMiniApp/MudBlazorMiniApp.csproj
+
+    - name: Update base href in index.html
+      run: |
+        sed -i 's|<base href="/" />|<base href="/NamozVaqtlari/" />|' ./publish/wwwroot/index.html
+
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./publish/wwwroot
